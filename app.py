@@ -24,10 +24,27 @@ def interpretar_cupom():
     image = Image.open(BytesIO(image_bytes))
 
     prompt = (
-        "Esta é uma imagem de um cupom fiscal de supermercado. "
-        "Extraia e retorne no seguinte formato JSON: mercado, endereco, data_compra, "
-        "total_compra e uma lista de produtos com: produto, quantidade, preco_unitario e preco_total."
-    )
+    "Esta é uma imagem de um cupom fiscal de supermercado, farmácia ou outro tipo de estabelecimento.\n"
+    "Extraia e retorne no seguinte formato JSON:\n"
+    "- razao_social\n"
+    "- nome_fantasia (se houver)\n"
+    - CNPJ\n"
+    "- endereco\n"
+    "- data_compra\n"
+    "- total_compra\n"
+    "- lista de produtos com os campos: codigo (EAN/GTIN, se visível), produto, quantidade, preco_unitario, preco_total.\n\n"
+
+    "Além disso, **inclua obrigatoriamente** um campo chamado **'categoria'** contendo **apenas uma** das seguintes opções:\n"
+    "supermercado, farmácia, açougue, padaria, papelaria, petshop, loja de roupas, loja de eletrônicos ou outro.\n\n"
+
+    "Para determinar a categoria, siga esta lógica:\n"
+    "- Priorize o nome do estabelecimento (ex: Assaí, Drogasil, Boticário, etc.)\n"
+    "- Use os tipos de produtos **apenas como apoio secundário**.\n"
+    "- Mesmo que o cupom contenha itens variados como pão, carne ou shampoo, se for de um supermercado, classifique como 'supermercado'.\n"
+    "- Nunca retorne múltiplas categorias. Sempre escolha **uma única categoria principal** com base no local da compra.\n\n"
+
+    "⚠️ Importante: se não souber o nome fantasia, deixe o campo como null. Mas **nunca deixe de preencher a categoria**."
+)
 
     try:
         response = model.generate_content([prompt, image], stream=False)
