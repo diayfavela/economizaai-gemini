@@ -44,7 +44,12 @@ def interpretar_cupom():
     try:
         print("Enviando imagem para a Gemini...")
         response = model.generate_content([prompt, image], stream=False)
-        print("Resposta da Gemini:", response.text)  # Log para verificar a resposta da Gemini
+        print("Resposta da Gemini (status):", response.status_code)  # Status da resposta da Gemini
+        print("Resposta da Gemini (texto):", response.text)  # Log da resposta completa da Gemini
+
+        # Verifique se a resposta da Gemini é válida
+        if response.status_code != 200:
+            return jsonify({"erro": f"Erro na resposta da Gemini: {response.status_code} - {response.text}"}), 500
 
         # Tente parsear a resposta, se estiver em JSON
         try:
