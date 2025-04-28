@@ -5,13 +5,15 @@ from PIL import Image
 from io import BytesIO
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
+# Configura a API do Gemini com a chave gerada
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
-
+# Cria a aplicação Flask
 app = Flask(__name__)
 
 @app.route("/api/interpretar-cupom", methods=["POST"])
@@ -42,16 +44,23 @@ def interpretar_cupom():
     )
 
     try:
+        # Tentando gerar a resposta do modelo Gemini
+        print(f"Enviando imagem e prompt ao modelo Gemini...")
         response = model.generate_content([prompt, image], stream=False)
+        print(f"Resposta do Gemini: {response.text}")
+
         # Converte a string JSON retornada pelo Gemini em um objeto Python
-        import json
         dados_cupom = json.loads(response.text)
+        
+        # Log para ver os dados recebidos
+        print(f"Dados do cupom decodificados: {dados_cupom}")
+        
         return jsonify(dados_cupom)
+
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        # Captura qualquer erro e retorna um erro 500 com a descrição
+        print(f"Erro ao processar a imagem: {e}")
+        return jsonify({"erro": f"Erro ao processar a imagem: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
-
