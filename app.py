@@ -42,17 +42,17 @@ def interpretar_cupom():
     )
 
     try:
+        print("Enviando imagem para a Gemini...")
         response = model.generate_content([prompt, image], stream=False)
         print("Resposta da Gemini:", response.text)  # Log para verificar a resposta da Gemini
-        
+
         # Tente parsear a resposta, se estiver em JSON
         try:
             dados_cupom = json.loads(response.text)
-        except json.JSONDecodeError:
-            print("Erro ao decodificar JSON:", response.text)
+            return jsonify(dados_cupom)
+        except json.JSONDecodeError as json_error:
+            print(f"Erro ao decodificar a resposta JSON: {json_error}")
             return jsonify({"erro": "Erro ao processar a resposta da Gemini"}), 500
-
-        return jsonify(dados_cupom)
 
     except Exception as e:
         print(f"Erro ao processar imagem: {e}")
