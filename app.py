@@ -9,11 +9,9 @@ import json
 
 load_dotenv()
 
-# Configura a API do Gemini com a chave gerada
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
-# Cria a aplicação Flask
 app = Flask(__name__)
 
 @app.route("/api/interpretar-cupom", methods=["POST"])
@@ -24,6 +22,8 @@ def interpretar_cupom():
     imagem = request.files["imagem"]
     image_bytes = imagem.read()
     image = Image.open(BytesIO(image_bytes))
+
+    print("Imagem recebida com sucesso. Processando...")  # Log para verificar se a imagem foi recebida
 
     prompt = (
         "Extraia e retorne no seguinte formato JSON:\n"
@@ -44,23 +44,17 @@ def interpretar_cupom():
     )
 
     try:
-        # Tentando gerar a resposta do modelo Gemini
-        print(f"Enviando imagem e prompt ao modelo Gemini...")
+        # Envia a imagem e o prompt para a API Gemini
         response = model.generate_content([prompt, image], stream=False)
-        print(f"Resposta do Gemini: {response.text}")
 
-        # Converte a string JSON retornada pelo Gemini em um objeto Python
+        print("Resposta da Gemini:", response.text)  # Adicionando log da resposta para verificar se está vindo com sucesso
+
+        # Converte a resposta da API em um JSON
         dados_cupom = json.loads(response.text)
-        
-        # Log para ver os dados recebidos
-        print(f"Dados do cupom decodificados: {dados_cupom}")
-        
         return jsonify(dados_cupom)
-
     except Exception as e:
-        # Captura qualquer erro e retorna um erro 500 com a descrição
-        print(f"Erro ao processar a imagem: {e}")
-        return jsonify({"erro": f"Erro ao processar a imagem: {str(e)}"}), 500
+        print(f"Erro ao processar imagem: {e}")
+        return jsonify({"erro": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
