@@ -23,8 +23,6 @@ def interpretar_cupom():
     image_bytes = imagem.read()
     image = Image.open(BytesIO(image_bytes))
 
-    print("Imagem recebida com sucesso. Processando...")  # Log para verificar se a imagem foi recebida
-
     prompt = (
         "Extraia e retorne no seguinte formato JSON:\n"
         "- categoria (ex: supermercado, farmácia, etc — este campo é obrigatório e deve vir primeiro)\n"
@@ -44,14 +42,18 @@ def interpretar_cupom():
     )
 
     try:
-        # Envia a imagem e o prompt para a API Gemini
         response = model.generate_content([prompt, image], stream=False)
+        print("Resposta da Gemini:", response.text)  # Log para verificar a resposta da Gemini
+        
+        # Tente parsear a resposta, se estiver em JSON
+        try:
+            dados_cupom = json.loads(response.text)
+        except json.JSONDecodeError:
+            print("Erro ao decodificar JSON:", response.text)
+            return jsonify({"erro": "Erro ao processar a resposta da Gemini"}), 500
 
-        print("Resposta da Gemini:", response.text)  # Adicionando log da resposta para verificar se está vindo com sucesso
-
-        # Converte a resposta da API em um JSON
-        dados_cupom = json.loads(response.text)
         return jsonify(dados_cupom)
+
     except Exception as e:
         print(f"Erro ao processar imagem: {e}")
         return jsonify({"erro": str(e)}), 500
