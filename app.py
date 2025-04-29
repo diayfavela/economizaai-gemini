@@ -1,19 +1,3 @@
-from flask import Flask, request, jsonify
-import google.generativeai as genai
-import base64
-from PIL import Image
-from io import BytesIO
-import os
-from dotenv import load_dotenv
-import json
-
-load_dotenv()
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel(model_name="gemini-1.5-flash")
-
-app = Flask(__name__)
-
 @app.route("/api/interpretar-cupom", methods=["POST"])
 def interpretar_cupom():
     if "imagem" not in request.files:
@@ -44,24 +28,30 @@ def interpretar_cupom():
     try:
         print("Enviando imagem para a Gemini...")
         response = model.generate_content([prompt, image], stream=False)
-        print("Resposta da Gemini (status):", response.status_code)  # Status da resposta da Gemini
-        print("Resposta da Gemini (texto):", response.text)  # Log da resposta completa da Gemini
+        print("Resposta da Gemini (texto):", response.text)
 
-        # Verifique se a resposta da Gemini é válida
-        if response.status_code != 200:
-            return jsonify({"erro": f"Erro na resposta da Gemini: {response.status_code} - {response.text}"}), 500
+        # Remover o bloco de markdown (```json ... ```) e extrair apenas o JSON
+        texto_resposta = response.text.strip()
+        if texto_resposta.startswith("```json"):
+            texto_resposta = texto_resposta[7:]  # Remove "```json\n"
+        if texto_resposta.endswith("```"):
+            texto_resposta = texto_resposta[:-3]  # Remove "```"
+        texto_resposta = texto_resposta.strip()
 
-        # Tente parsear a resposta, se estiver em JSON
+        print("Texto JSON extraído:", texto_resposta)
+
+        # Tente parsear a resposta como JSON
         try:
-            dados_cupom = json.loads(response.text)
+            dados_cupom = json.loads(texto_resposta)
+            # Renomear "lista_de_produtos" para "produtos" para corresponder ao esperado pelo app
+            if "lista_de_produtos" in dados_cupom:
+                dados_cupom["produtos"] = dados_cupom.pop("lista_de_produtos")
+            print("Dados decodificados:", dados_cupom)
             return jsonify(dados_cupom)
         except json.JSONDecodeError as json_error:
             print(f"Erro ao decodificar a resposta JSON: {json_error}")
-            return jsonify({"erro": "Erro ao processar a resposta da Gemini"}), 500
+            return jsonify({"erro": "Erro ao processar a resposta da Gemini: resposta inválida"}), 500
 
     except Exception as e:
         print(f"Erro ao processar imagem: {e}")
         return jsonify({"erro": str(e)}), 500
-
-if __name__ == "__main__":
-    app.run(debug=True)
