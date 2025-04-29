@@ -1,3 +1,22 @@
+from flask import Flask, request, jsonify
+import google.generativeai as genai
+import base64
+from PIL import Image
+from io import BytesIO
+import os
+from dotenv import load_dotenv
+import json
+
+# Carregar variáveis de ambiente
+load_dotenv()
+
+# Configurar a API do Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
+# Criar a instância do Flask
+app = Flask(__name__)
+
 @app.route("/api/interpretar-cupom", methods=["POST"])
 def interpretar_cupom():
     if "imagem" not in request.files:
@@ -55,3 +74,6 @@ def interpretar_cupom():
     except Exception as e:
         print(f"Erro ao processar imagem: {e}")
         return jsonify({"erro": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
