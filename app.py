@@ -6,6 +6,7 @@ from io import BytesIO
 import os
 from dotenv import load_dotenv
 import json
+import re
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -46,7 +47,8 @@ def interpretar_cupom():
         "- Use os tipos de produtos apenas como apoio secundário.\n"
         "- Mesmo que o cupom contenha itens variados, se for de um supermercado, classifique como 'supermercado'.\n"
         "- Nunca retorne múltiplas categorias. Sempre escolha uma única categoria principal com base no local da compra.\n\n"
-        "⚠️ Importante: se não souber o nome fantasia, deixe o campo como null. Mas nunca deixe de preencher a categoria."
+        "⚠️ Importante: se não souber o nome fantasia, deixe o campo como null. Mas nunca deixe de preencher a categoria.\n"
+        "⚠️ Retorne apenas o JSON, sem observações, comentários ou texto adicional após o JSON."
     )
 
     try:
@@ -56,17 +58,26 @@ def interpretar_cupom():
             response = model.generate_content([prompt, texto], stream=False)
         else:
             response = model.generate_content([prompt, image], stream=False)
-        print("Resposta da Gemini (texto):", response.text)
+        print("Resposta completa da Gemini (texto):", response.text)
 
-        # Remover o bloco de markdown (```json ... ```) e extrair apenas o JSON
-        texto_resposta = response.text.strip()
+        # Extrair apenas o JSON da resposta usando regex
+        # Busca por um bloco que começa com { e termina com }
+        json_match = re.search(r'\{.*?\}(?=\s*(?:\*\*|$))', response.text, re.DOTALL)
+        if not json_match:
+            raise ValueError("Não foi encontrado um JSON válido na resposta do Gemini")
+
+        texto_resposta = json_match.group(0)
+        print("Texto JSON extraído:", texto_resposta)
+
+        # Remover o bloco de markdown (```json ... ```), se presente
+        texto_resposta = texto_resposta.strip()
         if texto_resposta.startswith("```json"):
             texto_resposta = texto_resposta[7:]  # Remove "```json\n"
         if texto_resposta.endswith("```"):
             texto_resposta = texto_resposta[:-3]  # Remove "```"
         texto_resposta = texto_resposta.strip()
 
-        print("Texto JSON extraído:", texto_resposta)
+        print("Texto JSON após remoção de markdown:", texto_resposta)
 
         # Tente parsear a resposta como JSON
         try:
@@ -78,10 +89,10 @@ def interpretar_cupom():
             return jsonify(dados_cupom)
         except json.JSONDecodeError as json_error:
             print(f"Erro ao decodificar a resposta JSON: {json_error}")
-            return jsonify({"erro": "Erro ao processar a resposta da Gemini: resposta inválida"}), 500
+            return jsonify({"erro": f"Erro ao processar a resposta da Gemini: {str(json_error)}"}), 500
 
     except Exception as e:
-        print(f"Erro ao processar: $e")
+        print(f"Erro ao processar: {e}")
         return jsonify({"erro": str(e)}), 500
 
 if __name__ == "__main__":
