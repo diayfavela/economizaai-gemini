@@ -19,12 +19,17 @@ app = Flask(__name__)
 
 @app.route("/api/interpretar-cupom", methods=["POST"])
 def interpretar_cupom():
-    if "imagem" not in request.files:
-        return jsonify({"erro": "Envie uma imagem com o campo 'imagem'"}), 400
-
-    imagem = request.files["imagem"]
-    image_bytes = imagem.read()
-    image = Image.open(BytesIO(image_bytes))
+    # Verificar se foi enviado um campo 'texto'
+    if "texto" in request.form:
+        texto = request.form['texto']
+        print("Texto recebido:", texto)
+    # Verificar se foi enviada uma imagem
+    elif "imagem" in request.files:
+        imagem = request.files["imagem"]
+        image_bytes = imagem.read()
+        image = Image.open(BytesIO(image_bytes))
+    else:
+        return jsonify({"erro": "Envie uma imagem com o campo 'imagem' ou texto com o campo 'texto'"}), 400
 
     prompt = (
         "Extraia e retorne no seguinte formato JSON:\n"
@@ -45,8 +50,12 @@ def interpretar_cupom():
     )
 
     try:
-        print("Enviando imagem para a Gemini...")
-        response = model.generate_content([prompt, image], stream=False)
+        print("Enviando para a Gemini...");
+        # Enviar texto ou imagem ao Gemini
+        if "texto" in request.form:
+            response = model.generate_content([prompt, texto], stream=False)
+        else:
+            response = model.generate_content([prompt, image], stream=False)
         print("Resposta da Gemini (texto):", response.text)
 
         # Remover o bloco de markdown (```json ... ```) e extrair apenas o JSON
@@ -62,7 +71,7 @@ def interpretar_cupom():
         # Tente parsear a resposta como JSON
         try:
             dados_cupom = json.loads(texto_resposta)
-            # Renomear "lista_de_produtos" para "produtos" para corresponder ao esperado pelo app
+            # Renomear "lista_de_produtos" para "produtos"
             if "lista_de_produtos" in dados_cupom:
                 dados_cupom["produtos"] = dados_cupom.pop("lista_de_produtos")
             print("Dados decodificados:", dados_cupom)
@@ -72,7 +81,7 @@ def interpretar_cupom():
             return jsonify({"erro": "Erro ao processar a resposta da Gemini: resposta inválida"}), 500
 
     except Exception as e:
-        print(f"Erro ao processar imagem: {e}")
+        print(f"Erro ao processar: $e")
         return jsonify({"erro": str(e)}), 500
 
 if __name__ == "__main__":
