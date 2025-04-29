@@ -60,28 +60,27 @@ def interpretar_cupom():
             response = model.generate_content([prompt, image], stream=False)
         print("Resposta completa da Gemini (texto):", response.text)
 
-        # Extrair apenas o JSON da resposta usando regex
-        # Busca por um bloco que começa com { e termina com }
-        json_match = re.search(r'\{.*?\}(?=\s*(?:\*\*|$))', response.text, re.DOTALL)
-        if not json_match:
-            raise ValueError("Não foi encontrado um JSON válido na resposta do Gemini")
-
-        texto_resposta = json_match.group(0)
-        print("Texto JSON extraído:", texto_resposta)
-
         # Remover o bloco de markdown (```json ... ```), se presente
-        texto_resposta = texto_resposta.strip()
+        texto_resposta = response.text.strip()
         if texto_resposta.startswith("```json"):
             texto_resposta = texto_resposta[7:]  # Remove "```json\n"
         if texto_resposta.endswith("```"):
             texto_resposta = texto_resposta[:-3]  # Remove "```"
         texto_resposta = texto_resposta.strip()
+        print("Resposta após remoção de markdown:", texto_resposta)
 
-        print("Texto JSON após remoção de markdown:", texto_resposta)
+        # Extrair apenas o JSON da resposta usando regex mais robusta
+        # Captura o JSON completo, incluindo blocos aninhados, até o último }
+        json_match = re.search(r'\{(?:[^{}]|\{[^{}]*\})*\}', texto_resposta, re.DOTALL)
+        if not json_match:
+            raise ValueError("Não foi encontrado um JSON válido na resposta do Gemini")
+
+        texto_json = json_match.group(0)
+        print("Texto JSON extraído:", texto_json)
 
         # Tente parsear a resposta como JSON
         try:
-            dados_cupom = json.loads(texto_resposta)
+            dados_cupom = json.loads(texto_json)
             # Renomear "lista_de_produtos" para "produtos"
             if "lista_de_produtos" in dados_cupom:
                 dados_cupom["produtos"] = dados_cupom.pop("lista_de_produtos")
