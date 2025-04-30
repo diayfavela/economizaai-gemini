@@ -2,11 +2,15 @@ import os
 import base64
 from flask import Flask, request, jsonify
 from google.generativeai import GenerativeModel, configure
+from dotenv import load_dotenv
+
+# Carregar variáveis de ambiente
+load_dotenv()
 
 app = Flask(__name__)
 
 # Configuração da API do Gemini
-configure(api_key=os.environ["GEMINI_API_KEY"])
+configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = GenerativeModel("gemini-1.5-flash")
 
 @app.route("/api/interpretar-cupom", methods=["POST"])
