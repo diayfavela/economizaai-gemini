@@ -1,5 +1,6 @@
 import os
 import base64
+import mimetypes
 from flask import Flask, request, jsonify
 from google.generativeai import GenerativeModel, configure
 from dotenv import load_dotenv
@@ -13,6 +14,15 @@ app = Flask(__name__)
 configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = GenerativeModel("gemini-1.5-flash")
 
+# Lista de mimeTypes suportados pelo Gemini
+SUPPORTED_MIME_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif'
+]
+
 @app.route("/api/interpretar-cupom", methods=["POST"])
 def interpretar_cupom():
     try:
@@ -25,10 +35,23 @@ def interpretar_cupom():
         if not image_file:
             return jsonify({"erro": "Arquivo de imagem vazio."}), 400
 
+        # Obter o nome do arquivo e inferir o mimeType
+        filename = image_file.filename
+        mime_type, _ = mimetypes.guess_type(filename)
+
+        # Se o mimeType não puder ser inferido, tentar usar o mimetype fornecido pelo Flask
+        if mime_type is None:
+            mime_type = image_file.mimetype or 'image/jpeg'  # Fallback para JPEG
+
+        # Validar se o mimeType é suportado pelo Gemini
+        if mime_type not in SUPPORTED_MIME_TYPES:
+            return jsonify({
+                "erro": f"Formato de imagem não suportado: {mime_type}. Tipos suportados: {', '.join(SUPPORTED_MIME_TYPES)}"
+            }), 400
+
         # Ler os bytes da imagem e converter para base64
         image_bytes = image_file.read()
         image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        mime_type = image_file.mimetype or 'image/jpeg'
 
         # Prompt para o Gemini interpretar a imagem
         prompt = """
