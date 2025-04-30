@@ -1,97 +1,89 @@
-from flask import Flask, request, jsonify
-import google.generativeai as genai
-import base64
-from PIL import Image
-from io import BytesIO
 import os
-from dotenv import load_dotenv
-import json
-import re
+import base64
+from flask import Flask, request, jsonify
+from google.generativeai import GenerativeModel, configure
 
-# Carregar variáveis de ambiente
-load_dotenv()
-
-# Configurar a API do Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel(model_name="gemini-1.5-flash")
-
-# Criar a instância do Flask
 app = Flask(__name__)
+
+# Configuração da API do Gemini
+configure(api_key=os.environ["GEMINI_API_KEY"])
+model = GenerativeModel("gemini-1.5-flash")
 
 @app.route("/api/interpretar-cupom", methods=["POST"])
 def interpretar_cupom():
-    # Verificar se foi enviado um campo 'texto'
-    if "texto" in request.form:
-        texto = request.form['texto']
-        print("Texto recebido:", texto)
-    # Verificar se foi enviada uma imagem
-    elif "imagem" in request.files:
-        imagem = request.files["imagem"]
-        image_bytes = imagem.read()
-        image = Image.open(BytesIO(image_bytes))
-    else:
-        return jsonify({"erro": "Envie uma imagem com o campo 'imagem' ou texto com o campo 'texto'"}), 400
-
-    prompt = (
-        "Extraia e retorne no seguinte formato JSON:\n"
-        "- categoria (ex: supermercado, farmácia, etc — este campo é obrigatório e deve vir primeiro)\n"
-        "- razao_social\n"
-        "- nome_fantasia (se houver)\n"
-        "- CNPJ\n"
-        "- endereco\n"
-        "- data_compra\n"
-        "- total_compra\n"
-        "- lista de produtos com os campos: codigo (EAN/GTIN, se visível), produto, quantidade, preco_unitario, preco_total.\n\n"
-        "Para determinar a categoria, siga esta lógica:\n"
-        "- Priorize o nome do estabelecimento (ex: Assaí, Drogasil, Boticário, etc.)\n"
-        "- Use os tipos de produtos apenas como apoio secundário.\n"
-        "- Mesmo que o cupom contenha itens variados, se for de um supermercado, classifique como 'supermercado'.\n"
-        "- Nunca retorne múltiplas categorias. Sempre escolha uma única categoria principal com base no local da compra.\n\n"
-        "⚠️ Importante: se não souber o nome fantasia, deixe o campo como null. Mas nunca deixe de preencher a categoria.\n"
-        "⚠️ Retorne apenas o JSON, sem observações, comentários ou texto adicional após o JSON."
-    )
-
     try:
-        print("Enviando para a Gemini...");
-        # Enviar texto ou imagem ao Gemini
-        if "texto" in request.form:
-            response = model.generate_content([prompt, texto], stream=False)
-        else:
-            response = model.generate_content([prompt, image], stream=False)
-        print("Resposta completa da Gemini (texto):", response.text)
+        # Verificar se há uma imagem na requisição
+        if 'image' not in request.files:
+            return jsonify({"erro": "Nenhuma imagem fornecida."}), 400
 
-        # Remover o bloco de markdown (```json ... ```), se presente
-        texto_resposta = response.text.strip()
-        if texto_resposta.startswith("```json"):
-            texto_resposta = texto_resposta[7:]  # Remove "```json\n"
-        if texto_resposta.endswith("```"):
-            texto_resposta = texto_resposta[:-3]  # Remove "```"
-        texto_resposta = texto_resposta.strip()
-        print("Resposta após remoção de markdown:", texto_resposta)
+        # Ler a imagem da requisição
+        image_file = request.files['image']
+        if not image_file:
+            return jsonify({"erro": "Arquivo de imagem vazio."}), 400
 
-        # Extrair apenas o JSON da resposta usando regex mais robusta
-        # Captura o JSON completo, incluindo blocos aninhados, até o último }
-        json_match = re.search(r'\{(?:[^{}]|\{[^{}]*\})*\}', texto_resposta, re.DOTALL)
-        if not json_match:
-            raise ValueError("Não foi encontrado um JSON válido na resposta do Gemini")
+        # Ler os bytes da imagem e converter para base64
+        image_bytes = image_file.read()
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        mime_type = image_file.mimetype or 'image/jpeg'
 
-        texto_json = json_match.group(0)
-        print("Texto JSON extraído:", texto_json)
+        # Prompt para o Gemini interpretar a imagem
+        prompt = """
+Você é um assistente especializado em interpretar cupons fiscais brasileiros a partir de imagens. Sua tarefa é extrair informações estruturadas do cupom fiscal presente na imagem fornecida. O cupom contém uma lista de itens com colunas como código, descrição, quantidade, unidade, preço unitário e preço total, além de informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.) e o valor total da compra.
 
-        # Tente parsear a resposta como JSON
-        try:
-            dados_cupom = json.loads(texto_json)
-            # Renomear "lista_de_produtos" para "produtos"
-            if "lista_de_produtos" in dados_cupom:
-                dados_cupom["produtos"] = dados_cupom.pop("lista_de_produtos")
-            print("Dados decodificados:", dados_cupom)
-            return jsonify(dados_cupom)
-        except json.JSONDecodeError as json_error:
-            print(f"Erro ao decodificar a resposta JSON: {json_error}")
-            return jsonify({"erro": f"Erro ao processar a resposta da Gemini: {str(json_error)}"}), 500
+### Instruções:
+1. Extraia as informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.).
+2. Identifique a categoria como "supermercado".
+3. Extraia a lista de produtos, onde cada produto deve ter:
+   - "codigo": Código do produto.
+   - "produto": Descrição do produto.
+   - "quantidade": Quantidade (converta para número).
+   - "preco_unitario": Preço unitário (converta para número).
+   - "preco_total": Preço total do item (converta para número).
+4. Extraia o valor total da compra.
+5. Retorne os dados em formato JSON.
+
+### Formato de Saída:
+Retorne um JSON com os seguintes campos:
+- "categoria": "supermercado"
+- "razao_social": Razão social do supermercado
+- "nome_fantasia": Nome fantasia (pode ser null se não encontrado)
+- "CNPJ": CNPJ do supermercado
+- "endereco": Endereço do supermercado
+- "data_compra": Data da compra
+- "total_compra": Valor total da compra (número)
+- "produtos": Lista de produtos, onde cada produto tem:
+  - "codigo": string
+  - "produto": string
+  - "quantidade": número
+  - "preco_unitario": número
+  - "preco_total": número
+"""
+
+        # Enviar a imagem e o prompt ao Gemini
+        response = model.generate_content(
+            [
+                prompt,
+                {
+                    "mime_type": mime_type,
+                    "data": image_base64
+                }
+            ]
+        )
+
+        # Extrair o texto retornado pelo Gemini
+        response_text = response.text
+
+        # Remover marcações de markdown, se houver
+        cleaned_response = response_text.replace("```json\n", "").replace("```", "").strip()
+
+        # Parsear o JSON retornado pelo Gemini
+        import json
+        dados_cupom = json.loads(cleaned_response)
+
+        return jsonify(dados_cupom), 200
 
     except Exception as e:
-        print(f"Erro ao processar: {e}")
+        print(f"Erro ao interpretar a imagem do cupom: {str(e)}")
         return jsonify({"erro": str(e)}), 500
 
 if __name__ == "__main__":
