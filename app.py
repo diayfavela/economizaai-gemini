@@ -67,7 +67,8 @@ Você é um assistente especializado em interpretar cupons fiscais brasileiros a
    - "preco_unitario": Preço unitário (converta para número).
    - "preco_total": Preço total do item (converta para número).
 4. Extraia o valor total da compra.
-5. Retorne os dados em formato JSON.
+5. Crie um identificador único para o mercado baseado no CNPJ, no formato "MERCADO_<CNPJ>", onde <CNPJ> é o CNPJ limpo (somente números).
+6. Retorne os dados em formato JSON.
 
 ### Formato de Saída:
 Retorne um JSON com os seguintes campos:
@@ -75,6 +76,7 @@ Retorne um JSON com os seguintes campos:
 - "razao_social": Razão social do supermercado
 - "nome_fantasia": Nome fantasia (pode ser null se não encontrado)
 - "CNPJ": CNPJ do supermercado
+- "mercado_id": Identificador único do mercado (ex.: "MERCADO_12345678901234")
 - "endereco": Endereço do supermercado
 - "data_compra": Data da compra
 - "total_compra": Valor total da compra (número)
@@ -106,6 +108,14 @@ Retorne um JSON com os seguintes campos:
         # Parsear o JSON retornado pelo Gemini
         import json
         dados_cupom = json.loads(cleaned_response)
+
+        # Adicionar o mercado_id baseado no CNPJ
+        if 'CNPJ' in dados_cupom and dados_cupom['CNPJ']:
+            # Limpar o CNPJ (remover caracteres não numéricos)
+            cnpj_limpo = ''.join(filter(str.isdigit, dados_cupom['CNPJ']))
+            dados_cupom['mercado_id'] = f"MERCADO_{cnpj_limpo}"
+        else:
+            dados_cupom['mercado_id'] = None
 
         return jsonify(dados_cupom), 200
 
