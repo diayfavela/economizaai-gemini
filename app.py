@@ -55,7 +55,7 @@ def interpretar_cupom():
 
         # Prompt para o Gemini interpretar a imagem
         prompt = """
-Você é um assistente especializado em interpretar cupons fiscais brasileiros a partir de imagens. Sua tarefa é extrair informações estruturadas do cupom fiscal presente na imagem fornecida. O cupom contém uma lista de itens com colunas como código, descrição, quantidade, unidade, preço unitário e preço total, além de informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.) e o valor total da compra.
+Você é um assistente especializado em interpretar cupons fiscais brasileiros a partir de imagens. Sua tarefa é extrair informações estruturadas do cupom fiscal presente na imagem fornecida. O cupom contém uma lista de itens com colunas como código, descrição, quantidade, unidade, preço unitário e preço total, além de informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.), o valor total da compra e a chave de acesso.
 
 ### Instruções:
 1. Extraia as informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.).
@@ -67,8 +67,9 @@ Você é um assistente especializado em interpretar cupons fiscais brasileiros a
    - "preco_unitario": Preço unitário (converta para número).
    - "preco_total": Preço total do item (converta para número).
 4. Extraia o valor total da compra.
-5. Crie um identificador único para o mercado baseado no CNPJ, no formato "MERCADO_<CNPJ>", onde <CNPJ> é o CNPJ limpo (somente números).
-6. Retorne os dados em formato JSON.
+5. Extraia a chave de acesso (44 dígitos, geralmente formatada como 11 blocos de 4 dígitos separados por espaços, ex.: "3525 0503 2054 9300 1590 5900 1228 5881 2615 3311 9192"). Retorne a chave sem espaços.
+6. Crie um identificador único para o mercado baseado no CNPJ, no formato "MERCADO_<CNPJ>", onde <CNPJ> é o CNPJ limpo (somente números).
+7. Retorne os dados em formato JSON.
 
 ### Formato de Saída:
 Retorne um JSON com os seguintes campos:
@@ -80,6 +81,7 @@ Retorne um JSON com os seguintes campos:
 - "endereco": Endereço do supermercado
 - "data_compra": Data da compra
 - "total_compra": Valor total da compra (número)
+- "access_key": Chave de acesso (44 dígitos, sem espaços, ou null se não encontrada)
 - "produtos": Lista de produtos, onde cada produto tem:
   - "codigo": string
   - "produto": string
