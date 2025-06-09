@@ -1,129 +1,85 @@
 import os
 import base64
 import mimetypes
+import threading
+import uuid
 from flask import Flask, request, jsonify
 from google.generativeai import GenerativeModel, configure
 from dotenv import load_dotenv
 
-# Carregar variáveis de ambiente
 load_dotenv()
-
-app = Flask(__name__)
-
-# Configuração da API do Gemini
 configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = GenerativeModel("gemini-1.5-flash")
 
-# Lista de mimeTypes suportados pelo Gemini
-SUPPORTED_MIME_TYPES = [
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'image/heic',
-    'image/heif'
-]
+app = Flask(__name__)
+
+# Armazena jobs em memória (demonstração)
+JOBS = {}
+
+SUPPORTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+
+def process_job(job_id, data, is_text=False):
+    try:
+        prompt = """Você é um assistente especializado em interpretar cupons fiscais brasileiros...
+        5. Extraia obrigatoriamente a chave de acesso completa (44 dígitos)..."""
+        if is_text:
+            response = model.generate_content([prompt, data])
+        else:
+            response = model.generate_content([prompt, {"mime_type": data['mime_type'], "data": data['base64']}])
+        text = response.text
+        import json
+        cleaned = text.replace("```json\n", "").replace("```", "").strip()
+        dados = json.loads(cleaned)
+        dados['access_key'] = dados.get('access_key', '')
+        JOBS[job_id] = {"status": "done", "result": dados}
+    except Exception as e:
+        JOBS[job_id] = {"status": "error", "error": str(e)}
 
 @app.route("/api/interpretar-cupom", methods=["POST"])
 def interpretar_cupom():
-    try:
-        # Verificar se há uma imagem na requisição
-        if 'image' not in request.files:
-            return jsonify({"erro": "Nenhuma imagem fornecida."}), 400
+    if 'image' not in request.files:
+        return jsonify({"error": "Nenhuma imagem"}), 400
+    f = request.files['image']
+    mime_type, _ = mimetypes.guess_type(f.filename)
+    if mime_type not in SUPPORTED_MIME_TYPES:
+        return jsonify({"error": "Formato não suportado"}), 400
+    img_bytes = f.read()
+    img_b64 = base64.b64encode(img_bytes).decode('utf-8')
+    job_id = str(uuid.uuid4())
+    JOBS[job_id] = {"status": "processing"}
+    threading.Thread(
+        target=process_job,
+        args=(job_id, {'base64': img_b64, 'mime_type': mime_type}, False)
+    ).start()
+    return jsonify({"jobId": job_id}), 202
 
-        # Ler a imagem da requisição
-        image_file = request.files['image']
-        if not image_file:
-            return jsonify({"erro": "Arquivo de imagem vazio."}), 400
+@app.route("/api/interpretar-cupom-texto", methods=["POST"])
+def interpretar_cupom_texto():
+    if not request.is_json:
+        return jsonify({"error": "Corpo deve ser JSON"}), 400
+    data = request.get_json()
+    if 'text' not in data:
+        return jsonify({"error": "Campo 'text' é obrigatório"}), 400
+    text = data['text']
+    job_id = str(uuid.uuid4())
+    JOBS[job_id] = {"status": "processing"}
+    threading.Thread(
+        target=process_job,
+        args=(job_id, text, True)
+    ).start()
+    return jsonify({"jobId": job_id}), 202
 
-        # Obter o nome do arquivo e inferir o mimeType
-        filename = image_file.filename
-        mime_type, _ = mimetypes.guess_type(filename)
-
-        # Se o mimeType não puder ser inferido, tentar usar o mimetype fornecido pelo Flask
-        if mime_type is None:
-            mime_type = image_file.mimetype or 'image/jpeg'  # Fallback para JPEG
-
-        # Validar se o mimeType é suportado pelo Gemini
-        if mime_type not in SUPPORTED_MIME_TYPES:
-            return jsonify({
-                "erro": f"Formato de imagem não suportado: {mime_type}. Tipos suportados: {', '.join(SUPPORTED_MIME_TYPES)}"
-            }), 400
-
-        # Ler os bytes da imagem e converter para base64
-        image_bytes = image_file.read()
-        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-
-        # Prompt para o Gemini interpretar a imagem
-        prompt = """
-Você é um assistente especializado em interpretar cupons fiscais brasileiros a partir de imagens. Sua tarefa é extrair informações estruturadas do cupom fiscal presente na imagem fornecida. O cupom contém uma lista de itens com colunas como código, descrição, quantidade, unidade, preço unitário e preço total, além de informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.), o valor total da compra e a chave de acesso.
-
-### Instruções:
-1. Extraia as informações do supermercado (razão social, CNPJ, endereço, data da compra, etc.).
-2. Identifique a categoria como "supermercado".
-3. Extraia a lista de produtos, onde cada produto deve ter:
-   - "codigo": Código do produto.
-   - "produto": Descrição do produto.
-   - "quantidade": Quantidade (converta para número).
-   - "preco_unitario": Preço unitário (converta para número).
-   - "preco_total": Preço total do item (converta para número).
-4. Extraia o valor total da compra.
-5. Extraia a chave de acesso, que é uma sequência de 44 dígitos numéricos, geralmente apresentada como 11 blocos de 4 dígitos separados por espaços (ex.: "3525 0503 2054 9300 1590 5900 1228 5881 2615 3311 9192"). A chave pode estar em uma única linha ou dividida em duas linhas. Retorne a chave sem espaços, como uma string de 44 dígitos (ex.: "35250503205493001590590012285881261533119192"). Se não encontrar, retorne null.
-6. Crie um identificador único para o mercado baseado no CNPJ, no formato "MERCADO_<CNPJ>", onde <CNPJ> é o CNPJ limpo (somente números).
-7. Retorne os dados em formato JSON.
-
-### Formato de Saída:
-Retorne um JSON com os seguintes campos:
-- "categoria": "supermercado"
-- "razao_social": Razão social do supermercado
-- "nome_fantasia": Nome fantasia (pode ser null se não encontrado)
-- "CNPJ": CNPJ do supermercado
-- "mercado_id": Identificador único do mercado (ex.: "MERCADO_12345678901234")
-- "endereco": Endereço do supermercado
-- "data_compra": Data da compra
-- "total_compra": Valor total da compra (número)
-- "access_key": Chave de acesso (string de 44 dígitos sem espaços, ou null se não encontrada)
-- "produtos": Lista de produtos, onde cada produto tem:
-  - "codigo": string
-  - "produto": string
-  - "quantidade": número
-  - "preco_unitario": número
-  - "preco_total": número
-"""
-
-        # Enviar a imagem e o prompt ao Gemini
-        response = model.generate_content(
-            [
-                prompt,
-                {
-                    "mime_type": mime_type,
-                    "data": image_base64
-                }
-            ]
-        )
-
-        # Extrair o texto retornado pelo Gemini
-        response_text = response.text
-
-        # Remover marcações de markdown, se houver
-        cleaned_response = response_text.replace("```json\n", "").replace("```", "").strip()
-
-        # Parsear o JSON retornado pelo Gemini
-        import json
-        dados_cupom = json.loads(cleaned_response)
-
-        # Adicionar o mercado_id baseado no CNPJ
-        if 'CNPJ' in dados_cupom and dados_cupom['CNPJ']:
-            # Limpar o CNPJ (remover caracteres não numéricos)
-            cnpj_limpo = ''.join(filter(str.isdigit, dados_cupom['CNPJ']))
-            dados_cupom['mercado_id'] = f"MERCADO_{cnpj_limpo}"
-        else:
-            dados_cupom['mercado_id'] = None
-
-        return jsonify(dados_cupom), 200
-
-    except Exception as e:
-        print(f"Erro ao interpretar a imagem do cupom: {str(e)}")
-        return jsonify({"erro": str(e)}), 500
+@app.route("/api/status", methods=["GET"])
+def status():
+    job_id = request.args.get("jobId")
+    if job_id not in JOBS:
+        return jsonify({"error": "JobId inválido"}), 404
+    job = JOBS[job_id]
+    if job["status"] == "processing":
+        return jsonify({"status": "processing"}), 202
+    if job["status"] == "error":
+        return jsonify({"status": "error", "error": job["error"]}), 500
+    return jsonify({"status": "done", "data": job["result"]}), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
