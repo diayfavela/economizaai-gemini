@@ -1,6 +1,7 @@
 {
-  "builds": [{ "src": "app.py", "use": "@vercel/python" }],
-  "routes": [
-    { "src": "/api/interpretar-cupom", "dest": "app.py" }
-  ]
+  "functions": {
+    "api/app.py": {
+      "maxDuration": 300
+    }
+  }
 }
